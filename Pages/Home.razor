@@ -1,0 +1,125 @@
+@page "/"
+@using System.Text.Json
+@using BlazorViaCep.Models
+@inject HttpClient Http
+
+<PageTitle>Home</PageTitle>
+
+<h1>Consulta Via Cep</h1>
+
+@* <form> + @onsubmit permite consultar também com a tecla Enter. *@
+<form @onsubmit="ConsultarCep">
+    <div class="form-group">
+        <label for="cepInput">CEP:</label>
+        <input type="text" class="form-control" id="cepInput" @bind="cep"
+               placeholder="Digite o CEP (somente números)" maxlength="9" inputmode="numeric" />
+    </div>
+    <button type="submit" class="btn btn-primary mt-2" disabled="@carregando">
+        @(carregando ? "Consultando..." : "Consultar")
+    </button>
+</form>
+
+@if (viaCepResponse != null)
+{
+    <h3 class="mt-4">Resultado:</h3>
+    <table class="table table-bordered">
+        <tbody>
+            <tr>
+                <td><strong>CEP:</strong></td>
+                <td>@viaCepResponse.Cep</td>
+            </tr>
+            <tr>
+                <td><strong>Logradouro:</strong></td>
+                <td>@viaCepResponse.Rua</td>
+            </tr>
+            <tr>
+                <td><strong>Complemento:</strong></td>
+                <td>@viaCepResponse.Complemento</td>
+            </tr>
+            <tr>
+                <td><strong>Bairro:</strong></td>
+                <td>@viaCepResponse.Bairro</td>
+            </tr>
+            <tr>
+                <td><strong>Localidade:</strong></td>
+                <td>@viaCepResponse.Cidade</td>
+            </tr>
+            <tr>
+                <td><strong>UF:</strong></td>
+                <td>@viaCepResponse.Uf</td>
+            </tr>
+            <tr>
+                <td><strong>DDD:</strong></td>
+                <td>@viaCepResponse.Ddd</td>
+            </tr>
+        </tbody>
+    </table>
+}
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-4">
+        @errorMessage
+    </div>
+}
+
+@code {
+    private string? cep;
+    private Endereco? viaCepResponse;
+    private string? errorMessage;
+    private bool carregando;
+
+    private async Task ConsultarCep()
+    {
+        errorMessage = string.Empty;
+        viaCepResponse = null;
+
+        if (string.IsNullOrWhiteSpace(cep))
+        {
+            errorMessage = "Por favor, digite um CEP.";
+            return;
+        }
+
+        // Remove caracteres não numéricos do CEP (aceita "01001-000" ou "01001000").
+        // Também impede que texto arbitrário do usuário seja concatenado na URL.
+        string CepFormatado = new string(cep.Where(char.IsAsciiDigit).ToArray());
+
+        if (CepFormatado.Length != 8)
+        {
+            errorMessage = "O CEP deve conter 8 dígitos.";
+            return;
+        }
+
+        carregando = true;
+
+        try
+        {
+            var url = $"https://viacep.com.br/ws/{CepFormatado}/json/";
+            viaCepResponse = await Http.GetFromJsonAsync<Endereco>(url);
+
+            // A API do ViaCEP retorna um JSON com "erro": "true" se o CEP não for encontrado.
+            // Nesse caso nenhum outro campo vem preenchido, então basta verificar o CEP.
+            if (viaCepResponse?.Cep == null)
+            {
+                errorMessage = "CEP não encontrado ou inválido.";
+                viaCepResponse = null;
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage = $"Erro ao conectar à API: {ex.Message}";
+        }
+        catch (JsonException)
+        {
+            errorMessage = "A API retornou uma resposta em formato inesperado.";
+        }
+        catch (TaskCanceledException)
+        {
+            errorMessage = "A API demorou demais para responder. Tente novamente.";
+        }
+        finally
+        {
+            carregando = false;
+        }
+    }
+}
